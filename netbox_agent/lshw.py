@@ -1,8 +1,9 @@
-from netbox_agent.misc import is_tool
-import subprocess
-import logging
 import json
+import logging
+import subprocess
 import sys
+
+from netbox_agent.misc import is_tool
 
 
 class LSHW():
@@ -14,27 +15,25 @@ class LSHW():
         data = subprocess.getoutput(
             'lshw -quiet -json'
         )
-        json_data = json.loads(data)
-        # Starting from version 02.18, `lshw -json` wraps its result in a list
-        # rather than returning directly a dictionary
-        if isinstance(json_data, list):
-            self.hw_info = json_data[0]
-        else:
-            self.hw_info = json_data
+        
+
+        self.hw_info = json.loads(data)
         self.info = {}
         self.memories = []
         self.interfaces = []
         self.cpus = []
         self.power = []
         self.disks = []
-        self.gpus = []
-        self.vendor = self.hw_info["vendor"]
-        self.product = self.hw_info["product"]
-        self.chassis_serial = self.hw_info["serial"]
-        self.motherboard_serial = self.hw_info["children"][0].get("serial", "No S/N")
-        self.motherboard = self.hw_info["children"][0].get("product", "Motherboard")
+        #print(repr(self.__dict__))
+        #print(self.hw_info["vendor"])
 
-        for k in self.hw_info["children"]:
+        self.vendor = self.hw_info[0]["vendor"]
+        self.product = self.hw_info[0]["product"]
+        self.chassis_serial = self.hw_info[0]["serial"]
+        self.motherboard_serial = self.hw_info[0]["children"][0].get("serial", "No S/N")
+        self.motherboard = self.hw_info[0]["children"][0].get("product", "Motherboard")
+
+        for k in self.hw_info[0]["children"]:
             if k["class"] == "power":
                 # self.power[k["id"]] = k
                 self.power.append(k)
@@ -59,8 +58,6 @@ class LSHW():
     def get_hw_linux(self, hwclass):
         if hwclass == "cpu":
             return self.cpus
-        if hwclass == "gpu":
-            return self.gpus
         if hwclass == "network":
             return self.interfaces
         if hwclass == 'storage':
@@ -69,69 +66,56 @@ class LSHW():
             return self.memories
 
     def find_network(self, obj):
-        # Some interfaces do not have device (logical) name (eth0, for
-        # instance), such as not connected network mezzanine cards in blade
-        # servers. In such situations, the card will be named `unknown[0-9]`.
-        unkn_intfs = [
-            i for i in self.interfaces if i["name"].startswith("unknown")
-        ]
-        unkn_name = "unknown{}".format(len(unkn_intfs))
-        self.interfaces.append({
-            "name": obj.get("logicalname", unkn_name),
-            "macaddress": obj.get("serial", ""),
-            "serial": obj.get("serial", ""),
-            "product": obj["product"],
-            "vendor": obj["vendor"],
-            "description": obj["description"],
-        })
+        d = {}
+        d["name"] = obj["logicalname"]
+        d["macaddress"] = obj["serial"]
+        d["serial"] = obj["serial"]
+        d["product"] = obj["product"]
+        d["vendor"] = obj["vendor"]
+        d["description"] = obj["description"]
+
+        self.interfaces.append(d)
 
     def find_storage(self, obj):
         if "children" in obj:
             for device in obj["children"]:
-                self.disks.append({
-                    "logicalname": device.get("logicalname"),
-                    "product": device.get("product"),
-                    "serial": device.get("serial"),
-                    "version": device.get("version"),
-                    "size": device.get("size"),
-                    "description": device.get("description"),
-                    "type": device.get("description"),
-                })
+                d = {}
+                d["logicalname"] = device.get("logicalname")
+                d["product"] = device.get("product")
+                d["serial"] = device.get("serial")
+                d["version"] = device.get("version")
+                d["size"] = device.get("size")
+                d["description"] = device.get("description")
+
+                self.disks.append(d)
+
         elif "nvme" in obj["configuration"]["driver"]:
-            if not is_tool('nvme'):
-                logging.error('nvme-cli >= 1.0 does not seem to be installed')
-                return
-            try:
-                nvme = json.loads(
-                    subprocess.check_output(
-                        ["nvme", '-list', '-o', 'json'],
-                        encoding='utf8')
-                )
-                for device in nvme["Devices"]:
-                    d = {
-                        'logicalname': device["DevicePath"],
-                        'product': device["ModelNumber"],
-                        'serial': device["SerialNumber"],
-                        "version": device["Firmware"],
-                        'description': "NVME",
-                        'type': "NVME",
-                    }
-                    if "UsedSize" in device:
-                        d['size'] = device["UsedSize"]
-                    if "UsedBytes" in device:
-                        d['size'] = device["UsedBytes"]
-                    self.disks.append(d)
-            except Exception:
-                pass
+            nvme = json.loads(
+                subprocess.check_output(
+                    ["nvme", '-list', '-o', 'json'],
+                    encoding='utf8')
+            )
+
+            for device in nvme["Devices"]:
+                d = {}
+                d['logicalname'] = device["DevicePath"]
+                d['product'] = device["ModelNumber"]
+                d['serial'] = device["SerialNumber"]
+                d["version"] = device["Firmware"]
+                d['size'] = device["UsedSize"]
+                d['description'] = "NVME Disk"
+
+                self.disks.append(d)
 
     def find_cpus(self, obj):
         if "product" in obj:
-            self.cpus.append({
-                "product": obj["product"],
-                "vendor": obj["vendor"],
-                "description": obj["description"],
-                "location": obj["slot"],
-            })
+            c = {}
+            c["product"] = obj["product"]
+            c["vendor"] = obj["vendor"]
+            c["description"] = obj["description"]
+            c["location"] = obj["slot"]
+
+            self.cpus.append(c)
 
     def find_memories(self, obj):
         if "children" not in obj:
@@ -142,23 +126,16 @@ class LSHW():
             if "empty" in dimm["description"]:
                 continue
 
-            self.memories.append({
-                "slot": dimm.get("slot"),
-                "description": dimm.get("description"),
-                "id": dimm.get("id"),
-                "serial": dimm.get("serial", 'N/A'),
-                "vendor": dimm.get("vendor", 'N/A'),
-                "product": dimm.get("product", 'N/A'),
-                "size": dimm.get("size", 0) / 2 ** 20 / 1024,
-            })
+            d = {}
+            d["slot"] = dimm.get("slot")
+            d["description"] = dimm.get("description")
+            d["id"] = dimm.get("id")
+            d["serial"] = dimm.get("serial", 'N/A')
+            d["vendor"] = dimm.get("vendor", 'N/A')
+            d["product"] = dimm.get("product", 'N/A')
+            d["size"] = dimm.get("size", 0) / 2 ** 20 / 1024
 
-    def find_gpus(self, obj):
-        if "product" in obj:
-            self.gpus.append({
-                "product": obj["product"],
-                "vendor": obj["vendor"],
-                "description": obj["description"],
-            })
+            self.memories.append(d)
 
     def walk_bridge(self, obj):
         if "children" not in obj:
@@ -167,8 +144,6 @@ class LSHW():
         for bus in obj["children"]:
             if bus["class"] == "storage":
                 self.find_storage(bus)
-            if bus["class"] == "display":
-                self.find_gpus(bus)
 
             if "children" in bus:
                 for b in bus["children"]:
@@ -176,8 +151,6 @@ class LSHW():
                         self.find_storage(b)
                     if b["class"] == "network":
                         self.find_network(b)
-                    if b["class"] == "display":
-                        self.find_gpus(b)
 
 
 if __name__ == "__main__":

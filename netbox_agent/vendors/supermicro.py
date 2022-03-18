@@ -21,14 +21,12 @@ class SupermicroHost(ServerBase):
         self.manufacturer = 'Supermicro'
 
     def is_blade(self):
-        product_name = self.system[0]['Product Name'].strip()
+        product_name = self.get_product_name()
         # Blades
         blade = product_name.startswith('SBI')
         blade |= product_name.startswith('SBA')
         # Twin
         blade |= 'TR-' in product_name
-        # TwinPro
-        blade |= 'TP-' in product_name
         # BigTwin
         blade |= 'BT-' in product_name
         # Microcloud
@@ -46,34 +44,22 @@ class SupermicroHost(ServerBase):
         return None
 
     def get_service_tag(self):
-        if self.is_blade():
-            return self.baseboard[0]['Serial Number'].strip()
         return self.system[0]['Serial Number'].strip()
 
     def get_product_name(self):
-        if self.is_blade():
-            return self.baseboard[0]['Product Name'].strip()
         return self.system[0]['Product Name'].strip()
 
     def get_chassis(self):
         if self.is_blade():
-            return self.system[0]['Product Name'].strip()
+            return self.chassis[0]['Product Name'].strip()
         return self.get_product_name()
 
     def get_chassis_service_tag(self):
         if self.is_blade():
-            return self.system[0]['Serial Number'].strip()
+            return self.chassis[0]['Serial Number'].strip()
         return self.get_service_tag()
 
     def get_chassis_name(self):
         if not self.is_blade():
             return None
         return 'Chassis {}'.format(self.get_chassis_service_tag())
-
-    def get_expansion_product(self):
-        """
-        Get the extension slot that is on a pair slot number
-        next to the compute slot that is on an odd slot number
-        I only know on model of slot GPU extension card that.
-        """
-        raise NotImplementedError
