@@ -1,3 +1,9 @@
+# Purpose of Fork
+This fork's purpose is to create the compatability required between Netbox-Agent and Netbox 3.0. The rest of the README is from [this commit](https://github.com/Solvik/netbox-agent/commit/ce83364ff960c7d20855568a7413b512e2f9e159) of the original repo withe the exception of the following REQUIREMENT changes.
+
+- pynetbox == 6.6.1
+- Netbox == 3.0
+
 # Netbox agent [![Build Status](https://travis-ci.com/Solvik/netbox-agent.svg?branch=master)](https://travis-ci.com/Solvik/netbox-agent)
 
 This project aims to create hardware automatically into [Netbox](https://github.com/netbox-community/netbox) based on standard tools (dmidecode, lldpd, parsing /sys/, etc).
